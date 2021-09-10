@@ -82,8 +82,7 @@ def isnotebook():
 IS_NOTEBOOK = isnotebook()
 
 if IS_NOTEBOOK:
-    from IPython import display
-    from tqdm.notebook import tqdm
+    from fastprogress.fastprogress import progress_bar, master_bar
 else:
     from tqdm import tqdm
 
@@ -746,13 +745,15 @@ def z_to_pil():
 @torch.no_grad()
 def checkin(args, i, losses):
     losses_str = ', '.join(f'{loss.item():g}' for loss in losses)
-    tqdm.write(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
+    try:
+        tqdm.write(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
+    except:
+        progress_bar.write(f'i: {i}, loss: {sum(losses).item():g}, losses: {losses_str}')
     info = PngImagePlugin.PngInfo()
     info.add_text('comment', f'{args.prompts}')
     img = z_to_pil()
     img.save(args.output, pnginfo=info)
-    if IS_NOTEBOOK:
-        display.display(display.Image(args.output))
+    
 
 def ascend_txt(args):
     global i, perceptors, normalize, cutoutsTable, cutoutSizeTable
@@ -940,18 +941,32 @@ def do_run(args):
 
     i = 0
     try:
-        with tqdm() as pbar:
-            while True:
-                try:
-                    train(args, i)
-                    if i == args.iterations:
-                        break
-                    i += 1
-                    pbar.update()
-                except RuntimeError as e:
-                    print("Oops: runtime error: ", e)
-                    print("Try reducing --num-cuts to save memory")
-                    raise e
+        if IS_NOTEBOOK():
+            with tqdm() as pbar:
+                while True:
+                    try:
+                        train(args, i)
+                        if i == args.iterations:
+                            break
+                        i += 1
+                        pbar.update()
+                    except RuntimeError as e:
+                        print("Oops: runtime error: ", e)
+                        print("Try reducing --num-cuts to save memory")
+                        raise e
+        else:
+            with progress_bar() as pbar:
+                while True:
+                    try:
+                        train(args, i)
+                        if i == args.iterations:
+                            break
+                        i += 1
+                        pbar.update()
+                    except RuntimeError as e:
+                        print("Oops: runtime error: ", e)
+                        print("Try reducing --num-cuts to save memory")
+                        raise e
     except KeyboardInterrupt:
         pass
 
@@ -973,7 +988,10 @@ def do_video(args):
     length = 15 # Desired time of the video in seconds
 
     frames = []
-    tqdm.write('Generating video...')
+    try:
+        tqdm.write('Generating video...')
+    except:
+        progress_bar.write('Generating video...')
     for i in range(init_frame,last_frame): #
         frames.append(Image.open(f'./steps/frame_{i:04d}.png'))
 
@@ -997,8 +1015,12 @@ def do_video(args):
                '-preset', 'veryslow',
                '-metadata', f'comment={args.prompts}',
                output_file], stdin=PIPE)
-    for im in tqdm(frames):
-        im.save(p.stdin, 'PNG')
+    try:
+        for im in tqdm(frames):
+            im.save(p.stdin, 'PNG')
+    except:
+        for im in progress_bar(frames):
+            im.save(p.stdin, 'PNG')
     p.stdin.close()
     p.wait()
 
